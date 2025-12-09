@@ -20,6 +20,19 @@ function resolveSafe(baseDir, userInput) {
   return path.resolve(baseDir, userInput);
 }
 
+funcrion isInsideBaseDir(finalPath) {
+  return (
+    finalPath === Base_DIR ||
+    finalPath.startsWith(Base_DIR + path.sep)
+  );
+}
+function validateFilename(name) {
+  if (name.includes('\0')) return false;
+  if (name.includes('/')) || name.includes('\\')) return false;
+  if (name.includes('..')) return false;
+  return true:
+}
+
 // Secure route
 app.post(
   '/read',
@@ -30,7 +43,9 @@ app.post(
     .trim()
     .notEmpty().withMessage('filename must not be empty')
     .custom(value => {
-      if (value.includes('\0')) throw new Error('null byte not allowed');
+      if (!validateFilename(value)) {
+        throw new Error('Invalid filename: illegal characters');
+    }
       return true;
     }),
   (req, res) => {
@@ -39,7 +54,7 @@ app.post(
 
     const filename = req.body.filename;
     const normalized = resolveSafe(BASE_DIR, filename);
-    if (!normalized.startsWith(BASE_DIR + path.sep)) {
+    if (!isInsideBaseDir(normalized)) {
       return res.status(403).json({ error: 'Path traversal detected' });
     }
     if (!fs.existsSync(normalized)) return res.status(404).json({ error: 'File not found' });
@@ -52,15 +67,19 @@ app.post(
 // Vulnerable route (demo)
 app.post('/read-no-validate', (req, res) => {
   const filename = req.body.filename || '';
-  const resolvedPath = path.resolve(BASE_DIR, filename); // intentionally vulnerable
-  if (!resolvedPath.startsWith(BASE_DIR + path.sep)) {
-    return res.status(400).json({
-      error: 'Invalid filename'
-    });
+
+  if(!validateFilename(filename)) {
+    return res.status(400).json({ error: 'Invalid filename' });
+  }
+  const resolvedPath = resolveSafe(BASE_DIR, filename); // intentionally vulnerable
+  
+  if (!isInsideBaseDir(resolvedPath)) {
+    return res.status(403).json({ error: 'Path detected'});
   }
   
   if (!fs.existsSync(resolvedPath)) 
     return res.status(404).json({ error: 'File not found', path: resolvedPath });
+
   const content = fs.readFileSync(resolvedPath, 'utf8');
   res.json({ path: resolvedPath, content });
 });
@@ -69,13 +88,16 @@ app.post('/read-no-validate', (req, res) => {
 app.post('/setup-sample', (req, res) => {
   const samples = {
     'hello.txt': 'Hello from safe file!\n',
-    'notes/readme.md': '# Readme\nSample readme file'
+    'readme.md': '# Readme\nSample readme file'
   };
-  Object.keys(samples).forEach(k => {
-    const p = path.resolve(BASE_DIR, k);
-    const d = path.dirname(p);
-    if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
-    fs.writeFileSync(p, samples[k], 'utf8');
+  Object.keys(samples).forEach(name => {
+    if (!validateFilename(name)) return;
+    
+    const p = path.resolve(BASE_DIR, name);
+  
+    if (isInsideBaseDir(p)) {
+    fs.writeFileSync(p, samples[name], 'utf8');
+    
   });
   res.json({ ok: true, base: BASE_DIR });
 });
