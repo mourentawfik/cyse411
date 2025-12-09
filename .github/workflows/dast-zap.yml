@@ -29,7 +29,7 @@ jobs:
         run: |
           npm start &
           # wait for the server to boot
-          sleep 20
+          sleep 40
           
       - name: Run OWASP ZAP full scan 
         uses: zaproxy/action-full-scan@v0.13.0 
