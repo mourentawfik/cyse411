@@ -29,11 +29,11 @@ jobs:
         run: |
           npm start &
           # wait for the server to boot
-          sleep 40
+          sleep 20
           
       - name: Run OWASP ZAP full scan 
         uses: zaproxy/action-full-scan@v0.13.0 
         with:
-          target: 'http://localhost: 3000'
+          target: 'http://host.docker.internal:3000'
           fail_action: true  # fail job if ZAP finds alerts
           allow_issue_writing: false  # don't auto-open GitHub issues
