@@ -66,7 +66,7 @@ app.post('/read-no-validate', (req, res) => {
     return res.status(400).json({ error: 'Invalid filename' });
   }
   const resolvedPath = path.resolve(BASE_DIR, filename);
-  if (!resolvesPath.startsWith(BASE_DIR)) {
+  if (!resolvedPath.startsWith(BASE_DIR)) {
     return res.status(400).json({ error: 'Path detected'});
   }
   
