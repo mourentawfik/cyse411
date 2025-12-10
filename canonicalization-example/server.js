@@ -3,8 +3,16 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const { body, validationResult } = require('express-validator');
+const rateLimit = require('express-rate-limit');
+
+const requestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 
+  max: 100, 
+  message: 'Too many requests, please try again later.'
+});
 
 const app = express();
+app.use(requestLimiter);
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -20,18 +28,6 @@ function resolveSafe(baseDir, userInput) {
   return path.resolve(baseDir, userInput);
 }
 
-funcrion isInsideBaseDir(finalPath) {
-  return (
-    finalPath === Base_DIR ||
-    finalPath.startsWith(Base_DIR + path.sep)
-  );
-}
-function validateFilename(name) {
-  if (name.includes('\0')) return false;
-  if (name.includes('/')) || name.includes('\\')) return false;
-  if (name.includes('..')) return false;
-  return true:
-}
 
 // Secure route
 app.post(
@@ -43,9 +39,7 @@ app.post(
     .trim()
     .notEmpty().withMessage('filename must not be empty')
     .custom(value => {
-      if (!validateFilename(value)) {
-        throw new Error('Invalid filename: illegal characters');
-    }
+      if (value.includes('\0')) throw new Error('null byte not allowed');
       return true;
     }),
   (req, res) => {
@@ -53,14 +47,14 @@ app.post(
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
     const filename = req.body.filename;
-    const normalized = resolveSafe(BASE_DIR, filename);
-    if (!isInsideBaseDir(normalized)) {
+    const safePath = resolveSafe(BASE_DIR, filename);
+    if (!safePath.startsWith(BASE_DIR + path.sep)) {
       return res.status(403).json({ error: 'Path traversal detected' });
     }
-    if (!fs.existsSync(normalized)) return res.status(404).json({ error: 'File not found' });
+    if (!fs.existsSync(safePath)) return res.status(404).json({ error: 'File not found' });
 
-    const content = fs.readFileSync(normalized, 'utf8');
-    res.json({ path: normalized, content });
+    const fileContent = fs.readFileSync(safePath, 'utf8');
+    res.json({ path: safePath, content: fileContent });
   }
 );
 
@@ -68,21 +62,22 @@ app.post(
 app.post('/read-no-validate', (req, res) => {
   const filename = req.body.filename || '';
 
-  if(!validateFilename(filename)) {
+  if(filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
     return res.status(400).json({ error: 'Invalid filename' });
   }
-  const resolvedPath = resolveSafe(BASE_DIR, filename); // intentionally vulnerable
-  
-  if (!isInsideBaseDir(resolvedPath)) {
-    return res.status(403).json({ error: 'Path detected'});
+  const resolvedPath = path.resolve(BASE_DIR, filename);
+  if (!resolvesPath.startsWith(BASE_DIR)) {
+    return res.status(400).json({ error: 'Path detected'});
   }
   
   if (!fs.existsSync(resolvedPath)) 
     return res.status(404).json({ error: 'File not found', path: resolvedPath });
 
-  const content = fs.readFileSync(resolvedPath, 'utf8');
-  res.json({ path: resolvedPath, content });
+  const fileContent = fs.readFileSync(resolvedPath, 'utf8');
+  res.json({ path: resolvedPath, fileContent });
 });
+
+
 
 // Helper route for samples
 app.post('/setup-sample', (req, res) => {
@@ -91,11 +86,9 @@ app.post('/setup-sample', (req, res) => {
     'readme.md': '# Readme\nSample readme file'
   };
   Object.keys(samples).forEach(name => {
-    if (!validateFilename(name)) return;
-    
+    const d = path.dirname(p);
     const p = path.resolve(BASE_DIR, name);
-  
-    if (isInsideBaseDir(p)) {
+    if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); 
     fs.writeFileSync(p, samples[name], 'utf8');
     
   });
